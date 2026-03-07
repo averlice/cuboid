@@ -221,7 +221,7 @@ async def main():
 
                     # COMMANDS
                     if is_admin_cmd:
-                        cmd_match = re.match(r'^(follow|unfollow|block|unblock|post|explore|browse)\s+(.*)', (clean_content + " " + audio_transcription).strip(), re.IGNORECASE)
+                        cmd_match = re.match(r'^(follow|unfollow|block|unblock|post|explore|browse|personality|resetpersonality)\s*(.*)', (clean_content + " " + audio_transcription).strip(), re.IGNORECASE)
                         if cmd_match:
                             cmd, args = cmd_match.group(1).lower(), cmd_match.group(2).strip()
                             if cmd == 'explore' or cmd == 'browse':
@@ -235,6 +235,19 @@ async def main():
                                 except Exception as be:
                                     logger.error(f"Browser error: {be}")
                                     reply(f"Ono! Browser error!", visibility)
+                                continue
+                            if cmd == 'personality':
+                                if not args:
+                                    reply(f"Current personality: {ai.personality}", visibility)
+                                else:
+                                    ai.personality = args
+                                    logger.info(f"Personality temporarily changed to: {args}")
+                                    reply(f"Personality updated until next restart!", visibility)
+                                continue
+                            if cmd == 'resetpersonality':
+                                ai.__init__()
+                                logger.info("Personality reset to default.")
+                                reply("Personality reset to default!", visibility)
                                 continue
                             if cmd == 'post':
                                 # CASE 1: Literal post (wrapped in quotes)

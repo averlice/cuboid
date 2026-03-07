@@ -13,6 +13,9 @@ Cuboid is an over-the-top, overhyped, and highly enthusiastic AI agent for Masto
     - `unfollow @user@domain`: Unfollow an account.
     - `block @user@domain`: Block a user.
     - `unblock @user@domain`: Unblock a user.
+    - `personality <new prompt>`: Temporarily change the bot's system prompt (resets on restart).
+    - `personality`: View the current system prompt.
+    - `resetpersonality`: Reset the system prompt to the configured default.
 - **Automatic Online Announcement**: Posts a random, high-energy status update whenever it starts up (can be disabled).
 - **Scheduled Auto-Posting**: Automatically posts random, in-character content on a configurable interval.
 - **Sleep Schedule**: Configurable sleep hours where the bot stops posting and replying, with AI-generated sleep/wake announcements.
