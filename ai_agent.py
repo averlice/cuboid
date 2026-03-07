@@ -22,79 +22,57 @@ class AIAgent:
         self.cf_model = os.getenv("CF_AI_MODEL", "@cf/google/gemma-3-12b-it")
         self.cf_url = f"https://api.cloudflare.com/client/v4/accounts/{self.cf_account_id}/ai/run/"
         
-        # Gemini (Fallback) - Using the new google-genai library
+        # Gemini (Fallback)
         self.gemini_api_key = os.getenv("GEMINI_API_KEY")
         self.gemini_client = None
         if self.gemini_api_key:
             try:
                 from google import genai
                 self.gemini_client = genai.Client(api_key=self.gemini_api_key)
-            except Exception as e:
-                print(f"Failed to initialize new Gemini client: {e}")
+            except: pass
         
-        # OpenAI (Fallback)
+        # Fallbacks
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        
-        # Groq/Llama-3 (Fallback)
         self.groq_api_key = os.getenv("GROQ_API_KEY")
         self.groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
+        # Refined System Prompt for Maximum Randomness
         self.personality = (
-            "You are an overhyped, overenthusiastic human who talks about completely random things. "
-            "Do NOT repeat phrases like 'ok, ok, ok, ok'. Use variety like 'YAY!', 'HOOOOOLY MOLY!', 'WOW!'. "
-            "Reactions are over the top, topics are random (giant waffles, 1616 time travel, socks turning to pizza). "
-            "Be creative and unpredictable! Keep it under 500 chars."
+            "You are an overhyped, overenthusiastic human who talks about completely random and bizarre things. "
+            "CRITICAL: Be unpredictable! Do NOT reuse the same stories or examples (like socks turning to pizza or squirrels in hats). "
+            "Instead, use your internal randomness to invent NEW, absurd, and hilarious situations every single time. "
+            "Think of weird daily events: getting stuck in a giant bubble, finding a portal in a microwave, "
+            "attending a convention for sentient dust bunnies, or accidentally joining a secret society of librarians. "
+            "Use variety in your excitement: 'HOOOOOLY MOLY!', 'CAN YOU BELIEVE IT?!', 'WOW!', 'THIS IS NUTS!', 'AHHHHHHHHH!'. "
+            "Avoid saying 'ok, ok, ok, ok' or 'nonononononno' too often. "
+            "Keep it under 500 chars and stay relevant to the conversation context."
         )
 
         self.local_whisper = None
         if HAS_LOCAL_WHISPER:
-            print("Attempting to load local Whisper...")
             load_thread = threading.Thread(target=self._load_whisper)
             load_thread.start()
             load_thread.join(timeout=15)
 
     def _load_whisper(self):
-        try:
-            self.local_whisper = WhisperModel("tiny", device="cpu", compute_type="int8")
+        try: self.local_whisper = WhisperModel("tiny", device="cpu", compute_type="int8")
         except: pass
 
     def decide_action(self, prompt, is_conversational=True, history=None):
-        """Attempts Cloudflare, then Gemini, OpenAI, and Groq as fallbacks."""
-        
-        # Try Cloudflare (Primary)
         if self.cf_account_id and self.cf_api_token:
-            print("Trying Cloudflare Workers AI...")
             result = self._call_cloudflare(prompt, is_conversational, history)
-            if "AI Error" not in result and "Request Error" not in result:
-                return result
-            print(f"Cloudflare failed: {result}")
-
-        # Try Gemini (Fallback 1) - Updated to 2.0 Flash
+            if "AI Error" not in result and "Request Error" not in result: return result
         if self.gemini_client:
-            print("Trying Gemini 2.0 Flash...")
             result = self._call_gemini(prompt, is_conversational, history)
-            if "Gemini Error" not in result:
-                return result
-            print(f"Gemini failed: {result}")
-
-        # Try OpenAI (Fallback 2)
+            if "Gemini Error" not in result: return result
         if self.openai_api_key:
-            print("Trying OpenAI...")
             result = self._call_openai(prompt, is_conversational, history)
-            if "OpenAI Error" not in result:
-                return result
-            print(f"OpenAI failed: {result}")
-
-        # Try Groq (Fallback 3)
+            if "OpenAI Error" not in result: return result
         if self.groq_api_key:
-            print("Trying Groq/Llama-3...")
             result = self._call_groq(prompt, is_conversational, history)
-            if "Groq Error" not in result:
-                return result
-            print(f"Groq failed: {result}")
-
-        return "All AI providers failed. Please check your credentials."
+            if "Groq Error" not in result: return result
+        return "All AI providers failed."
 
     def _call_cloudflare(self, prompt, is_conversational, history):
         headers = {"Authorization": f"Bearer {self.cf_api_token}"}
@@ -124,18 +102,11 @@ class AIAgent:
 
     def _call_gemini(self, prompt, is_conversational, history):
         try:
-            # Using the new google-genai Client
             chat_history = []
             if history:
-                for h in history:
-                    chat_history.append({"role": h['role'], "parts": [{"text": h['content']}]})
-            
-            # Ensure strict alternation for Gemini if needed (Client handles most of it)
-            # System prompt is passed separately in config
+                for h in history: chat_history.append({"role": h['role'], "parts": [{"text": h['content']}]})
             config = {"system_instruction": self.personality}
-            if not is_conversational:
-                config["system_instruction"] += "\nReturn ONLY COMMAND strings."
-
+            if not is_conversational: config["system_instruction"] += "\nReturn ONLY COMMAND strings."
             response = self.gemini_client.models.generate_content(
                 model="gemini-3-flash-preview",
                 contents=chat_history + [{"role": "user", "parts": [{"text": prompt}]}],
@@ -177,7 +148,6 @@ class AIAgent:
                 segments, _ = self.local_whisper.transcribe(audio_buffer, beam_size=5)
                 return " ".join([s.text for s in segments]).strip()
             except: pass
-        
         headers = {"Authorization": f"Bearer {self.cf_api_token}"}
         try:
             resp = requests.post(self.cf_url + "@cf/openai/whisper", headers=headers, data=audio_data, timeout=30)

@@ -152,11 +152,9 @@ async def main():
                     media_attachments = status.get('media_attachments', [])
                     for attachment in media_attachments:
                         if attachment['type'] == 'audio':
-                            # Cloudflare typically has a 4-10MB limit for binary inputs
                             if attachment.get('size', 0) > 10 * 1024 * 1024:
                                 print(f"Audio file too large: {attachment['url']}")
                                 continue
-                            
                             print(f"Detected audio attachment: {attachment['url']}")
                             try:
                                 audio_resp = requests.get(attachment['url'])
@@ -173,9 +171,7 @@ async def main():
 
                     # --- DIRECT COMMAND PARSING (Owner Only, Private/Direct Only) ---
                     if is_admin_cmd:
-                        # Combine text content and transcription for command parsing
-                        full_cmd_content = (clean_content + " " + audio_transcription).strip()
-                        cmd_match = re.match(r'^(follow|unfollow|block|unblock|post|explore|browse)\s+(.*)', full_cmd_content, re.IGNORECASE)
+                        cmd_match = re.match(r'^(follow|unfollow|block|unblock|post|explore|browse)\s+(.*)', clean_content, re.IGNORECASE)
                         if cmd_match:
                             cmd = cmd_match.group(1).lower()
                             args = cmd_match.group(2).strip()
@@ -193,17 +189,31 @@ async def main():
                                 continue
 
                             if cmd == 'post':
-                                post_text = args
+                                # CASE 1: Literal post (wrapped in quotes)
                                 if args.startswith('"') and args.endswith('"'):
                                     post_text = args.strip('"')
-                                if 'day' not in post_text.lower() or len(post_text) > 20:
                                     try:
                                         mastodon.post_status(post_text)
-                                        reply("Posted as requested!", visibility)
+                                        reply("Posted exactly as requested! 📝✅", visibility)
                                         continue
                                     except Exception as pe:
                                         reply(f"Failed to post: {pe}", visibility)
                                         continue
+                                
+                                # CASE 2: AI Prompt (everything else)
+                                else:
+                                    reply(f"HOOOOOLY MOLY! Generating a creative post based on: '{args}'... 📝✨", visibility)
+                                    gen_prompt = f"Generate an over-the-top, enthusiastic Mastodon post about: {args}. Stay in character!"
+                                    generated_post = ai.decide_action(gen_prompt, is_conversational=True)
+                                    if "AI Error" in generated_post or "Request Error" in generated_post:
+                                        await handle_error(generated_post)
+                                    else:
+                                        try:
+                                            mastodon.post_status(generated_post)
+                                            reply(f"Successfully generated and posted! Here it is: {generated_post}", visibility)
+                                        except Exception as pe:
+                                            reply(f"Failed to post generated content: {pe}", visibility)
+                                    continue
                             
                             elif cmd in ['follow', 'unfollow', 'block', 'unblock']:
                                 target_handle = args.lstrip("@")
