@@ -1,38 +1,66 @@
-# Mastodon AI Agent with OpenClaw
+# Cuboid: Mastodon AI Agent
 
-This is a Mastodon application that uses the OpenClaw framework (via the CMDOP Python SDK) and Google's Gemini AI to autonomously manage a Mastodon account.
+Cuboid is an over-the-top, overhyped, and highly enthusiastic AI agent for Mastodon. It's built using **Python**, **Mastodon.py**, and **Cloudflare Workers AI**.
 
 ## Features
 
-- **Autonomous Posting**: Use AI to generate and post statuses.
-- **Auto-Reply**: Automatically reply to mentions using Gemini.
-- **Follow/Unfollow**: Agent can follow accounts on request or based on context.
-- **AI-Driven Blocking**: The agent can evaluate users and decide whether to block them, or follow explicit owner requests.
-- **Private Messages**: Send direct statuses (DMs) to users.
-- **OpenClaw Integration**: Ready to be orchestrated via the OpenClaw platform.
+- **Overenthusiastic Personality**: Responds with high energy and random stories.
+- **Context-Aware Conversations**: Remembers previous messages in a thread for smarter replies.
+- **Owner-Only Commands**: Allows owners to command the bot via Private Mentions (DMs).
+    - `post "exact content"`: Post a specific message.
+    - `post about your day`: Generate a random AI status update.
+    - `follow @user@domain`: Follow a new account.
+    - `unfollow @user@domain`: Unfollow an account.
+    - `block @user@domain`: Block a user.
+    - `unblock @user@domain`: Unblock a user.
+- **Automatic Online Announcement**: Posts a random, high-energy status update whenever it starts up.
+- **Error Reporting**: Automatically PMs the owner and posts a status if the AI brain fails.
+
+## Requirements
+
+- Python 3.10+
+- A Mastodon account and Application Access Token.
+- A Cloudflare Account with Workers AI enabled.
 
 ## Setup
 
-1.  **Clone/Copy this repository** to your local machine.
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/averlice/cuboid.git
+    cd cuboid
+    ```
 2.  **Install dependencies**:
     ```bash
     pip install -r requirements.txt
     ```
 3.  **Configure Environment**:
-    - Rename `.env` (template provided) and fill in your credentials.
-    - You will need a Mastodon Access Token (create an application in your Mastodon account settings under Development).
-    - You will need a Gemini API Key from [Google AI Studio](https://aistudio.google.com/).
-    - Optional: OpenClaw/CMDOP API Key if you want to use remote orchestration.
+    Create a `.env` file in the root directory and fill in your credentials (see `.env.template` if available, or use the format below):
+    ```env
+    # Mastodon Credentials
+    MASTODON_ACCESS_TOKEN=your_access_token_here
+    MASTODON_API_BASE_URL=https://your.mastodon.instance
+
+    # Cloudflare Workers AI Credentials
+    CLOUDFLARE_ACCOUNT_ID=your_cloudflare_account_id
+    CLOUDFLARE_API_TOKEN=your_cloudflare_api_token
+    CF_AI_MODEL=@cf/google/gemma-3-12b-it
+
+    # Bot Configuration
+    # Comma-separated list of Mastodon handles who can control the bot
+    OWNER_HANDLES=@your_handle@your.instance
+    ```
 
 ## How to Run
 
-Run the application with:
+Start the agent by running:
 ```bash
 python main.py
 ```
 
-## How it works
+## Contributing
 
-The agent runs a main loop (defined in `main.py`) that checks for notifications every 60 seconds. When it sees a mention, it sends the content to the AI agent (`ai_agent.py`) which decides how to respond. It can execute specific commands like `POST`, `FOLLOW`, or `BLOCK` by returning a specially formatted string, or it can provide a natural language response.
+This is an open-source project! Feel free to submit Pull Requests or open Issues to improve the bot's personality or features.
 
-The `mastodon_tools.py` module provides a clean interface to the `Mastodon.py` library for all necessary actions.
+## License
+
+MIT
