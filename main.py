@@ -35,11 +35,13 @@ except ImportError:
 load_dotenv()
 
 def clean_mastodon_html(content):
+    """Removes HTML tags and handles mentions from Mastodon content."""
     clean = re.sub('<[^<]+?>', '', content).strip()
     clean = re.sub(r'^(@[^\s]+\s*)+', '', clean).strip()
     return clean
 
 def extract_urls(status):
+    """Extracts non-mention/hashtag URLs from a Mastodon status."""
     urls = []
     content = status.get('content', '')
     soup = BeautifulSoup(content, 'html.parser')
@@ -133,8 +135,10 @@ async def main():
                     raw_acct = account['acct']
                     user_handle = f"@{raw_acct}" if not raw_acct.startswith("@") else raw_acct
                     
-                    if not (is_owner := any(owner == user_handle for owner in owners)) and \
-                       not (account['id'] in following_ids):
+                    is_owner = any(owner == user_handle for owner in owners)
+                    is_following = account['id'] in following_ids
+                    
+                    if not is_owner and not is_following:
                         continue
 
                     logger.info(f"Processing mention {notif_id} from {user_handle} ({visibility})")
@@ -188,16 +192,32 @@ async def main():
                                     reply(f"Ono! Browser error!", visibility)
                                 continue
                             if cmd == 'post':
-                                post_text = args.strip('"') if args.startswith('"') and args.endswith('"') else args
-                                if 'day' not in post_text.lower() or len(post_text) > 20:
+                                # CASE 1: Literal post (wrapped in quotes)
+                                if args.startswith('"') and args.endswith('"'):
+                                    post_text = args.strip('"')
                                     try:
                                         mastodon.post_status(post_text)
-                                        logger.info(f"Direct post executed: {post_text}")
-                                        reply("Posted as requested! 📝✅", visibility)
+                                        logger.info(f"Direct literal post executed: {post_text}")
+                                        reply("Posted exactly as requested! 📝✅", visibility)
                                         continue
                                     except Exception as pe:
                                         logger.error(f"Failed to post: {pe}")
                                         continue
+                                # CASE 2: AI Prompt (everything else)
+                                else:
+                                    logger.info(f"Generating AI post from prompt: {args}")
+                                    reply(f"HOOOOOLY MOLY! Generating a creative post based on your prompt... 📝✨", visibility)
+                                    gen_prompt = f"Generate a creative, enthusiastic Mastodon post about: {args}. Stay in character!"
+                                    generated_post = ai.decide_action(gen_prompt, is_conversational=True)
+                                    if "AI Error" in generated_post or "Request Error" in generated_post:
+                                        await handle_error(generated_post)
+                                    else:
+                                        try:
+                                            mastodon.post_status(generated_post)
+                                            reply(f"Successfully generated and posted! Here it is: {generated_post}", visibility)
+                                        except Exception as pe:
+                                            logger.error(f"Failed to post generated content: {pe}")
+                                    continue
                             
                             elif cmd in ['follow', 'unfollow', 'block', 'unblock']:
                                 target_handle = args.lstrip("@")
