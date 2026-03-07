@@ -36,6 +36,7 @@ class AIAgent:
         self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self.groq_api_key = os.getenv("GROQ_API_KEY")
         self.groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+        self.max_tokens = int(os.getenv("AI_MAX_TOKENS", "1024"))
 
         # --- BOT PERSONALITY LOADING (Prioritize .env, then file, then default) ---
         env_prompt = os.getenv("SYSTEM_PROMPT")
@@ -99,7 +100,7 @@ class AIAgent:
             messages.append({"role": "system", "content": "Return ONLY the COMMAND string."})
         messages.append({"role": "user", "content": final_prompt})
         try:
-            resp = requests.post(self.cf_url + self.cf_model, headers=headers, json={"messages": messages}, timeout=10)
+            resp = requests.post(self.cf_url + self.cf_model, headers=headers, json={"messages": messages, "max_tokens": self.max_tokens}, timeout=10)
             data = resp.json()
             return data["result"]["response"] if data.get("success") else f"AI Error: {data.get('errors')}"
         except Exception as e: return f"Request Error: {e}"
@@ -109,7 +110,7 @@ class AIAgent:
             chat_history = []
             if history:
                 for h in history: chat_history.append({"role": h['role'], "parts": [{"text": h['content']}]})
-            config = {"system_instruction": self.personality}
+            config = {"system_instruction": self.personality, "max_output_tokens": self.max_tokens}
             if not is_conversational: config["system_instruction"] += "\nReturn ONLY COMMAND strings."
             response = self.gemini_client.models.generate_content(
                 model="gemini-3-flash-preview",
@@ -126,8 +127,8 @@ class AIAgent:
         if not is_conversational: messages.append({"role": "system", "content": "Return ONLY COMMAND strings."})
         messages.append({"role": "user", "content": prompt})
         try:
-            resp = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, 
-                                 json={"model": self.openai_model, "messages": messages}, timeout=10)
+            resp = requests.post("https://api.openai.com/v1/chat/completions", headers=headers,
+                                 json={"model": self.openai_model, "messages": messages, "max_tokens": self.max_tokens}, timeout=10)
             data = resp.json()
             return data['choices'][0]['message']['content'] if 'choices' in data else f"OpenAI Error: {data}"
         except Exception as e: return f"OpenAI Error: {e}"
@@ -139,8 +140,8 @@ class AIAgent:
         if not is_conversational: messages.append({"role": "system", "content": "Return ONLY COMMAND strings."})
         messages.append({"role": "user", "content": prompt})
         try:
-            resp = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, 
-                                 json={"model": self.groq_model, "messages": messages}, timeout=10)
+            resp = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers,
+                                 json={"model": self.groq_model, "messages": messages, "max_tokens": self.max_tokens}, timeout=10)
             data = resp.json()
             return data['choices'][0]['message']['content'] if 'choices' in data else f"Groq Error: {data}"
         except Exception as e: return f"Groq Error: {e}"
