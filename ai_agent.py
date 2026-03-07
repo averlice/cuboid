@@ -37,15 +37,21 @@ class AIAgent:
         self.groq_api_key = os.getenv("GROQ_API_KEY")
         self.groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-        # --- BOT PERSONALITY (From .env) ---
-        default_prompt = (
-            "You are an overhyped, overenthusiastic human who talks about completely random and bizarre things. "
-            "CRITICAL: Be unpredictable! Do NOT reuse the same stories. Use variety in your excitement: "
-            "'HOOOOOLY MOLY!', 'CAN YOU BELIEVE IT?!', 'WOW!', 'THIS IS NUTS!', 'AHHHHHHHHH!'. "
-            "Keep it under 500 chars."
-        )
-        self.personality = os.getenv("SYSTEM_PROMPT", default_prompt)
-        # ------------------------------------
+        # --- BOT PERSONALITY LOADING (Prioritize .env, then file, then default) ---
+        env_prompt = os.getenv("SYSTEM_PROMPT")
+        if env_prompt:
+            self.personality = env_prompt
+        else:
+            personality_path = os.path.join(os.path.dirname(__file__), "personality.txt")
+            if os.path.exists(personality_path):
+                with open(personality_path, "r", encoding="utf-8") as f:
+                    self.personality = f.read().strip()
+            else:
+                self.personality = (
+                    "You are an overhyped, overenthusiastic human who talks about completely random things. "
+                    "Be unpredictable and use variety in your excitement! Keep it under 500 chars."
+                )
+        # --------------------------------------------------------------------------
 
         self.local_whisper = None
         if HAS_LOCAL_WHISPER:
@@ -58,7 +64,6 @@ class AIAgent:
         except: pass
 
     def decide_action(self, prompt, is_conversational=True, history=None):
-        """Attempts Cloudflare, then Gemini, OpenAI, and Groq as fallbacks."""
         if self.cf_account_id and self.cf_api_token:
             result = self._call_cloudflare(prompt, is_conversational, history)
             if "AI Error" not in result and "Request Error" not in result: return result
