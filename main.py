@@ -178,8 +178,12 @@ async def main():
                     visibility = status['visibility']
                     clean_content = clean_mastodon_html(status['content'])
                     raw_acct = account['acct']
+                    # Mastodon strips domain for local users; append it for consistent matching
+                    if '@' not in raw_acct and me:
+                        bot_domain = me['url'].split('/')[2]
+                        raw_acct = f"{raw_acct}@{bot_domain}"
                     user_handle = f"@{raw_acct}" if not raw_acct.startswith("@") else raw_acct
-                    
+
                     is_owner = any(owner == user_handle for owner in owners)
                     is_following = account['id'] in following_ids
                     
