@@ -52,10 +52,14 @@ Cuboid is an over-the-top, overhyped, and highly enthusiastic AI agent for Masto
 
 ## How to Run
 
-Start the agent by running:
-```bash
-python main.py
-```
+1. **Patch dependencies** (required once after install, and after upgrading `openclaw` or `cmdop`):
+    ```bash
+    python patch_openclaw.py
+    ```
+2. **Start the agent**:
+    ```bash
+    python main.py
+    ```
 
 ## Contributing
 
