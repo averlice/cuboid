@@ -1,0 +1,6 @@
+Mastodon.py
+python-dotenv
+google-generativeai
+openclaw
+pydantic
+requests
