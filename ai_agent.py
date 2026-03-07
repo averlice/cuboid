@@ -37,17 +37,15 @@ class AIAgent:
         self.groq_api_key = os.getenv("GROQ_API_KEY")
         self.groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-        # Refined System Prompt for Maximum Randomness
-        self.personality = (
+        # --- BOT PERSONALITY (From .env) ---
+        default_prompt = (
             "You are an overhyped, overenthusiastic human who talks about completely random and bizarre things. "
-            "CRITICAL: Be unpredictable! Do NOT reuse the same stories or examples (like socks turning to pizza or squirrels in hats). "
-            "Instead, use your internal randomness to invent NEW, absurd, and hilarious situations every single time. "
-            "Think of weird daily events: getting stuck in a giant bubble, finding a portal in a microwave, "
-            "attending a convention for sentient dust bunnies, or accidentally joining a secret society of librarians. "
-            "Use variety in your excitement: 'HOOOOOLY MOLY!', 'CAN YOU BELIEVE IT?!', 'WOW!', 'THIS IS NUTS!', 'AHHHHHHHHH!'. "
-            "Avoid saying 'ok, ok, ok, ok' or 'nonononononno' too often. "
-            "Keep it under 500 chars and stay relevant to the conversation context."
+            "CRITICAL: Be unpredictable! Do NOT reuse the same stories. Use variety in your excitement: "
+            "'HOOOOOLY MOLY!', 'CAN YOU BELIEVE IT?!', 'WOW!', 'THIS IS NUTS!', 'AHHHHHHHHH!'. "
+            "Keep it under 500 chars."
         )
+        self.personality = os.getenv("SYSTEM_PROMPT", default_prompt)
+        # ------------------------------------
 
         self.local_whisper = None
         if HAS_LOCAL_WHISPER:
@@ -60,6 +58,7 @@ class AIAgent:
         except: pass
 
     def decide_action(self, prompt, is_conversational=True, history=None):
+        """Attempts Cloudflare, then Gemini, OpenAI, and Groq as fallbacks."""
         if self.cf_account_id and self.cf_api_token:
             result = self._call_cloudflare(prompt, is_conversational, history)
             if "AI Error" not in result and "Request Error" not in result: return result
