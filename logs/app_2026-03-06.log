@@ -1,1 +1,6 @@
 2026-03-06 22:20:47 | WARNING  | huggingface_hub.file_download:1736 - Xet Storage is enabled for this repo, but the 'hf_xet' package is not installed. Falling back to regular HTTP download. For better performance, install the package with: `pip install huggingface_hub[hf_xet]` or `pip install hf_xet`
+2026-03-06 22:22:37 | WARNING  | huggingface_hub.file_download:1736 - Xet Storage is enabled for this repo, but the 'hf_xet' package is not installed. Falling back to regular HTTP download. For better performance, install the package with: `pip install huggingface_hub[hf_xet]` or `pip install hf_xet`
+2026-03-06 22:25:06 | INFO     | faster_whisper:881 - Processing audio with duration 02:56.640
+2026-03-06 22:25:07 | INFO     | faster_whisper:948 - Detected language 'en' with probability 0.54
+2026-03-06 22:29:05 | INFO     | faster_whisper:881 - Processing audio with duration 01:32.369
+2026-03-06 22:29:05 | INFO     | faster_whisper:948 - Detected language 'en' with probability 0.98

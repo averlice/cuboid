@@ -1,6 +1,6 @@
 Mastodon.py
 python-dotenv
-google-generativeai
+google-genai
 openclaw
 pydantic
 requests

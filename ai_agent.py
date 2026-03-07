@@ -2,6 +2,7 @@ import os
 import requests
 import io
 import threading
+import re
 from dotenv import load_dotenv
 
 # Optional local Whisper
@@ -21,8 +22,15 @@ class AIAgent:
         self.cf_model = os.getenv("CF_AI_MODEL", "@cf/google/gemma-3-12b-it")
         self.cf_url = f"https://api.cloudflare.com/client/v4/accounts/{self.cf_account_id}/ai/run/"
         
-        # Gemini (Fallback)
+        # Gemini (Fallback) - Using the new google-genai library
         self.gemini_api_key = os.getenv("GEMINI_API_KEY")
+        self.gemini_client = None
+        if self.gemini_api_key:
+            try:
+                from google import genai
+                self.gemini_client = genai.Client(api_key=self.gemini_api_key)
+            except Exception as e:
+                print(f"Failed to initialize new Gemini client: {e}")
         
         # OpenAI (Fallback)
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -62,9 +70,9 @@ class AIAgent:
                 return result
             print(f"Cloudflare failed: {result}")
 
-        # Try Gemini (Fallback 1)
-        if self.gemini_api_key:
-            print("Trying Gemini...")
+        # Try Gemini (Fallback 1) - Updated to 2.0 Flash
+        if self.gemini_client:
+            print("Trying Gemini 2.0 Flash...")
             result = self._call_gemini(prompt, is_conversational, history)
             if "Gemini Error" not in result:
                 return result
@@ -91,8 +99,6 @@ class AIAgent:
     def _call_cloudflare(self, prompt, is_conversational, history):
         headers = {"Authorization": f"Bearer {self.cf_api_token}"}
         messages = [{"role": "system", "content": self.personality}]
-        
-        # Role cleaning for Cloudflare
         clean_history = []
         if history:
             for msg in history:
@@ -101,18 +107,15 @@ class AIAgent:
                     clean_history[-1]['content'] += "\n" + msg['content']
                 else:
                     clean_history.append({"role": msg['role'], "content": msg['content']})
-        
         while clean_history and clean_history[0]['role'] == 'assistant': clean_history.pop(0)
         final_prompt = prompt
         if clean_history and clean_history[-1]['role'] == 'user':
             last_user_msg = clean_history.pop()
             final_prompt = f"Context: {last_user_msg['content']}\n\nCurrent: {prompt}"
-        
         messages.extend(clean_history)
         if not is_conversational:
             messages.append({"role": "system", "content": "Return ONLY the COMMAND string."})
         messages.append({"role": "user", "content": final_prompt})
-
         try:
             resp = requests.post(self.cf_url + self.cf_model, headers=headers, json={"messages": messages}, timeout=10)
             data = resp.json()
@@ -121,17 +124,24 @@ class AIAgent:
 
     def _call_gemini(self, prompt, is_conversational, history):
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=self.gemini_api_key)
-            model = genai.GenerativeModel("gemini-pro")
-            full_prompt = f"{self.personality}\n\n"
+            # Using the new google-genai Client
+            chat_history = []
             if history:
-                for h in history: full_prompt += f"{h['role']}: {h['content']}\n"
-            full_prompt += f"User: {prompt}"
-            if not is_conversational: full_prompt += "\nReturn ONLY COMMAND strings."
+                for h in history:
+                    chat_history.append({"role": h['role'], "parts": [{"text": h['content']}]})
             
-            resp = model.generate_content(full_prompt)
-            return resp.text
+            # Ensure strict alternation for Gemini if needed (Client handles most of it)
+            # System prompt is passed separately in config
+            config = {"system_instruction": self.personality}
+            if not is_conversational:
+                config["system_instruction"] += "\nReturn ONLY COMMAND strings."
+
+            response = self.gemini_client.models.generate_content(
+                model="gemini-3-flash-preview",
+                contents=chat_history + [{"role": "user", "parts": [{"text": prompt}]}],
+                config=config
+            )
+            return response.text
         except Exception as e: return f"Gemini Error: {e}"
 
     def _call_openai(self, prompt, is_conversational, history):
