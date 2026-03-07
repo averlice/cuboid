@@ -13,7 +13,9 @@ Cuboid is an over-the-top, overhyped, and highly enthusiastic AI agent for Masto
     - `unfollow @user@domain`: Unfollow an account.
     - `block @user@domain`: Block a user.
     - `unblock @user@domain`: Unblock a user.
-- **Automatic Online Announcement**: Posts a random, high-energy status update whenever it starts up.
+- **Automatic Online Announcement**: Posts a random, high-energy status update whenever it starts up (can be disabled).
+- **Scheduled Auto-Posting**: Automatically posts random, in-character content on a configurable interval.
+- **Sleep Schedule**: Configurable sleep hours where the bot stops posting and replying, with AI-generated sleep/wake announcements.
 - **Error Reporting**: Automatically PMs the owner and posts a status if the AI brain fails.
 
 ## Requirements
@@ -48,6 +50,31 @@ Cuboid is an over-the-top, overhyped, and highly enthusiastic AI agent for Masto
     # Bot Configuration
     # Comma-separated list of Mastodon handles who can control the bot
     OWNER_HANDLES=@your_handle@your.instance
+
+    # AI Settings
+    # Max output tokens for AI responses (default: 1024)
+    AI_MAX_TOKENS=1024
+
+    # Online Post
+    # Set to false to disable the startup announcement post (default: true)
+    ONLINE_POST_ENABLED=true
+
+    # Auto-Posting
+    # Interval in minutes between automatic posts. Set to 0 to disable (default: 0)
+    AUTO_POST_INTERVAL=60
+
+    # Sleep Schedule
+    # Bot stops replying and auto-posting during these hours.
+    # Posts a sleep announcement at SLEEP_START and a wake announcement at SLEEP_END.
+    # Supports HH:MM or just HH format. Both must be set to enable.
+    SLEEP_START=23:30
+    SLEEP_END=07:00
+
+    # Custom Prompts (all optional - sensible defaults are built in)
+    # ONLINE_PROMPT=Write a super high-energy 'I am online' post for Mastodon.
+    # SLEEP_PROMPT=Write a post about being tired and needing to sleep.
+    # WAKE_PROMPT=Write a post about waking up and being back online.
+    # AUTO_POST_PROMPT=Write a random, spontaneous Mastodon post.
     ```
 
 ## How to Run

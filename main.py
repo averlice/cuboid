@@ -1,9 +1,11 @@
 import os
 import re
+import time
 import asyncio
 import requests
 import logging
 import traceback
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -71,15 +73,23 @@ async def main():
         except Exception as e:
             logger.error(f"Failed to initialize OpenClaw client: {e}")
 
+    # Configurable prompts
+    online_prompt = os.getenv("ONLINE_PROMPT", "Write a super high-energy, over-the-top 'I am online' post for Mastodon. Talk about being back from somewhere strange.")
+    sleep_prompt = os.getenv("SLEEP_PROMPT", "Write a Mastodon post about being super tired and needing to sleep. Stay in character!")
+    wake_prompt = os.getenv("WAKE_PROMPT", "Write a Mastodon post about waking up and being back online. Stay in character!")
+    auto_post_prompt = os.getenv("AUTO_POST_PROMPT", "Write a random, spontaneous Mastodon post. Be yourself, talk about whatever comes to mind. Stay in character!")
+
     # Initial online post
-    online_prompt = "Write a super high-energy, over-the-top 'I am online' post for Mastodon. Talk about being back from somewhere strange."
-    initial_post = ai.decide_action(online_prompt, is_conversational=True)
-    if "AI Error" not in initial_post and "Request Error" not in initial_post:
-        try:
-            mastodon.post_status(initial_post)
-            logger.info(f"Announcement posted: {initial_post}")
-        except Exception as e:
-            logger.error(f"Failed to post announcement: {e}")
+    if os.getenv("ONLINE_POST_ENABLED", "true").lower() == "true":
+        initial_post = ai.decide_action(online_prompt, is_conversational=True)
+        if "AI Error" not in initial_post and "Request Error" not in initial_post:
+            try:
+                mastodon.post_status(initial_post)
+                logger.info(f"Announcement posted: {initial_post}")
+            except Exception as e:
+                logger.error(f"Failed to post announcement: {e}")
+    else:
+        logger.info("Online post disabled.")
 
     # Track following list
     following_ids = set()
@@ -103,6 +113,37 @@ async def main():
     except Exception as e:
         logger.error(f"Could not initialize notification tracking: {e}")
 
+    # Auto-post timer
+    auto_post_interval = int(os.getenv("AUTO_POST_INTERVAL", "0")) * 60  # minutes to seconds
+    last_auto_post = time.time()
+    if auto_post_interval > 0:
+        logger.info(f"Auto-posting enabled every {auto_post_interval // 60} minutes.")
+
+    # Sleep schedule (HH:MM format, e.g. SLEEP_START=23:45 SLEEP_END=07:30)
+    sleep_start_raw = os.getenv("SLEEP_START")
+    sleep_end_raw = os.getenv("SLEEP_END")
+    sleep_enabled = sleep_start_raw is not None and sleep_end_raw is not None
+    if sleep_enabled:
+        sh, sm = sleep_start_raw.split(":") if ":" in sleep_start_raw else (sleep_start_raw, "0")
+        eh, em = sleep_end_raw.split(":") if ":" in sleep_end_raw else (sleep_end_raw, "0")
+        sleep_start_mins = int(sh) * 60 + int(sm)
+        sleep_end_mins = int(eh) * 60 + int(em)
+        logger.info(f"Sleep schedule enabled: {sleep_start_raw} - {sleep_end_raw}")
+
+    def is_sleep_time():
+        if not sleep_enabled:
+            return False
+        now = datetime.now()
+        now_mins = now.hour * 60 + now.minute
+        if sleep_start_mins > sleep_end_mins:  # Spans midnight (e.g. 23:45-07:30)
+            return now_mins >= sleep_start_mins or now_mins < sleep_end_mins
+        else:  # Same day (e.g. 02:00-10:00)
+            return sleep_start_mins <= now_mins < sleep_end_mins
+
+    is_sleeping = is_sleep_time()
+    if sleep_enabled and is_sleeping:
+        logger.info("Bot started during sleep hours, entering sleep mode.")
+
     async def handle_error(error_msg):
         logger.error(f"AI ERROR: {error_msg}")
         for owner in owners:
@@ -125,10 +166,14 @@ async def main():
                 if last_processed_id is None or notif_id > last_processed_id:
                     last_processed_id = notif_id
 
+                # Skip processing mentions while sleeping
+                if is_sleeping:
+                    continue
+
                 notif_type = notification['type']
                 account = notification['account']
                 status = notification.get('status')
-                
+
                 if notif_type == 'mention' and status:
                     visibility = status['visibility']
                     clean_content = clean_mastodon_html(status['content'])
@@ -275,6 +320,43 @@ async def main():
                     else:
                         final_reply = re.sub(r'^COMMAND:.*$', '', ai_response, flags=re.MULTILINE).strip() or ai_response
                         reply(final_reply, visibility)
+
+            # Sleep/wake transitions
+            if sleep_enabled:
+                sleeping_now = is_sleep_time()
+                if sleeping_now and not is_sleeping:
+                    is_sleeping = True
+                    logger.info("Entering sleep mode.")
+                    try:
+                        sleep_post = ai.decide_action(sleep_prompt, is_conversational=True)
+                        if "AI Error" not in sleep_post and "Request Error" not in sleep_post:
+                            mastodon.post_status(sleep_post)
+                            logger.info(f"Sleep post: {sleep_post}")
+                    except Exception as e:
+                        logger.error(f"Sleep post failed: {e}")
+                elif not sleeping_now and is_sleeping:
+                    is_sleeping = False
+                    logger.info("Waking up from sleep mode.")
+                    try:
+                        wake_post = ai.decide_action(wake_prompt, is_conversational=True)
+                        if "AI Error" not in wake_post and "Request Error" not in wake_post:
+                            mastodon.post_status(wake_post)
+                            logger.info(f"Wake post: {wake_post}")
+                    except Exception as e:
+                        logger.error(f"Wake post failed: {e}")
+
+            # Auto-post on schedule (skip during sleep)
+            if auto_post_interval > 0 and not is_sleeping and (time.time() - last_auto_post) >= auto_post_interval:
+                last_auto_post = time.time()
+                try:
+                    auto_post = ai.decide_action(auto_post_prompt, is_conversational=True)
+                    if "AI Error" not in auto_post and "Request Error" not in auto_post:
+                        mastodon.post_status(auto_post)
+                        logger.info(f"Auto-post: {auto_post}")
+                    else:
+                        logger.error(f"Auto-post AI failed: {auto_post}")
+                except Exception as e:
+                    logger.error(f"Auto-post failed: {e}")
 
             await asyncio.sleep(30)
         except Exception as e:
