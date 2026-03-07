@@ -4,3 +4,7 @@ google-generativeai
 openclaw
 pydantic
 requests
+beautifulsoup4
+faster-whisper
+torch
+torchaudio
