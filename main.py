@@ -1,6 +1,8 @@
 import os
 import re
 import asyncio
+import requests
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from mastodon_tools import MastodonTool
 from ai_agent import AIAgent
@@ -14,6 +16,42 @@ def clean_mastodon_html(content):
     # Remove all leading mentions (like @bot @user)
     clean = re.sub(r'^(@[^\s]+\s*)+', '', clean).strip()
     return clean
+
+def extract_urls(status):
+    """Extracts URLs from a Mastodon status object."""
+    urls = []
+    # Mastodon API provides tags/links in the status object
+    if 'tags' in status:
+        pass # Not helpful for general URLs
+    
+    # Simple regex to find URLs in the cleaned content
+    content = status.get('content', '')
+    soup = BeautifulSoup(content, 'html.parser')
+    for a in soup.find_all('a', href=True):
+        href = a['href']
+        # Ignore mentions and hashtags (usually internal Mastodon links)
+        if not (href.startswith('https://') or href.startswith('http://')):
+            continue
+        if 'mention' in a.get('class', []) or 'hashtag' in a.get('class', []):
+            continue
+        urls.append(href)
+    return list(set(urls))
+
+def fetch_page_content(url):
+    """Fetches a summary of the page content from a URL."""
+    try:
+        print(f"Fetching link content: {url}")
+        response = requests.get(url, timeout=10, headers={"User-Agent": "CuboidMastodonBot/1.0"})
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            # Extract title and some text
+            title = soup.title.string if soup.title else "No Title"
+            # Get the first 1000 characters of text
+            text = ' '.join(soup.stripped_strings)
+            return f"Title: {title}\nContent Snippet: {text[:1000]}..."
+    except Exception as e:
+        return f"Could not fetch link: {e}"
+    return "Could not retrieve content."
 
 async def main():
     mastodon = MastodonTool()
@@ -37,7 +75,7 @@ async def main():
     print("Generating initial online post...")
     online_prompt = (
         "Write a super high-energy, over-the-top 'I am online' post for Mastodon. "
-        "Talk about being back from somewhere strange. Use your full personality: 'YAY!', 'HOOOOOLY MOLY!', etc."
+        "Your name is Cuboid. Talk about being back from somewhere strange. Use your full personality: 'YAY!', 'HOOOOOLY MOLY!', etc."
     )
     initial_post = ai.decide_action(online_prompt, is_conversational=True)
     if "AI Error" not in initial_post and "Request Error" not in initial_post:
@@ -74,41 +112,43 @@ async def main():
             notifications = mastodon.mastodon.notifications(since_id=last_processed_id)
             
             for notification in reversed(notifications):
-                notif_id = notification['id']
+                if last_processed_id is None or notification['id'] > last_processed_id:
+                    last_processed_id = notif_id = notification['id']
+
                 notif_type = notification['type']
                 account = notification['account']
                 status = notification.get('status')
-                
-                if last_processed_id is None or notif_id > last_processed_id:
-                    last_processed_id = notif_id
-
-                raw_acct = account['acct']
-                user_handle = f"@{raw_acct}" if not raw_acct.startswith("@") else raw_acct
                 
                 if notif_type == 'mention' and status:
                     visibility = status['visibility']
                     clean_content = clean_mastodon_html(status['content'])
                     
-                    is_owner = any(owner == user_handle for owner in owners)
+                    user_handle = f"@{account['acct']}" if not account['acct'].startswith("@") else account['acct']
+                    is_owner = any(owner == user_handle or owner == f"@{user_handle}" for owner in owners)
                     is_following = account['id'] in following_ids
                     
                     if not (is_owner or is_following):
                         continue
 
-                    print(f"Processing mention {notif_id} from {user_handle} ({visibility})")
+                    print(f"Processing mention {notification['id']} from {user_handle} ({visibility})")
+
+                    # --- LINK CONTENT FETCHING ---
+                    links = extract_urls(status)
+                    link_context = ""
+                    for link in links:
+                        link_context += f"\n--- Content of link {link} ---\n{fetch_page_content(link)}\n"
+                    # -----------------------------
 
                     # --- CONTEXT FETCHING ---
                     history = []
                     try:
                         context = mastodon.get_status_context(status['id'])
-                        # Fetch the last 5 messages from the thread for context
                         for ancestor in context['ancestors'][-5:]:
                             role = "assistant" if ancestor['account']['id'] == me['id'] else "user"
                             anc_content = clean_mastodon_html(ancestor['content'])
                             history.append({"role": role, "content": anc_content})
                     except Exception as e:
                         print(f"Failed to fetch context: {e}")
-                    # ------------------------
 
                     is_private_msg = (visibility in ['direct', 'private'])
                     is_admin_cmd = (is_owner and is_private_msg)
@@ -118,13 +158,12 @@ async def main():
                         result = mastodon.reply_to_status(status['id'], final_text, visibility=vis)
                         print(f"Replied with status {result['id']}")
 
-                    # --- DIRECT COMMAND PARSING ---
+                    # --- DIRECT KEYWORD COMMANDS ---
                     if is_admin_cmd:
                         cmd_match = re.match(r'^(follow|unfollow|block|unblock|post)\s+(.*)', clean_content, re.IGNORECASE)
                         if cmd_match:
                             cmd = cmd_match.group(1).lower()
                             args = cmd_match.group(2).strip()
-
                             if cmd == 'post':
                                 if args.startswith('"') and args.endswith('"'):
                                     mastodon.post_status(args.strip('"'))
@@ -134,7 +173,6 @@ async def main():
                                     mastodon.post_status(args)
                                     reply("Posted as requested!", visibility)
                                     continue
-                            
                             elif cmd in ['follow', 'unfollow', 'block', 'unblock']:
                                 target_handle = args.lstrip("@")
                                 results = mastodon.search_accounts(target_handle)
@@ -160,20 +198,37 @@ async def main():
                                     continue
 
                     # --- AI PROCESSING ---
-                    prompt = (
-                        f"User {user_handle} (Is Owner: {is_owner}, Visibility: {visibility}) said: {clean_content}. "
-                        "If it's the owner in a private message asking for an action like 'post about your day', respond with 'COMMAND: POST_AI_DAY'. "
-                        "Otherwise, just reply in your over-the-top personality."
-                    )
+                    # Include link context if present
+                    full_content = clean_content
+                    if link_context:
+                        full_content += f"\n\nContext from links provided in post:{link_context}"
+
+                    base_prompt = f"Your name is Cuboid. User {user_handle} (Is Owner: {is_owner}, Visibility: {visibility}) said: {full_content}. "
+                    
+                    if is_admin_cmd:
+                        prompt = base_prompt + (
+                            "Determine if they want you to 'post about your day'. "
+                            "If YES, respond ONLY with 'COMMAND: POST_AI_DAY'. "
+                            "If NO, just reply to them in your over-the-top personality. "
+                            "IMPORTANT: Never use 'COMMAND:' prefixes unless you are certain they want that action."
+                        )
+                    else:
+                        prompt = base_prompt + (
+                            "Reply to them in your over-the-top personality. "
+                            "IMPORTANT: Never use 'COMMAND:' prefixes. Just chat."
+                        )
                     
                     ai_response = ai.decide_action(prompt, is_conversational=True, history=history).strip()
                     
                     if ai_response.startswith("COMMAND: POST_AI_DAY") and is_admin_cmd:
-                        day_post = ai.decide_action("Write an over-the-top Mastodon post about your day.", is_conversational=True)
+                        day_post = ai.decide_action("Your name is Cuboid. Write an over-the-top Mastodon post about your day.", is_conversational=True)
                         mastodon.post_status(day_post)
                         reply(f"Posted about my day: {day_post}", visibility)
                     else:
-                        reply(ai_response, visibility)
+                        cleaned_response = re.sub(r'^COMMAND:.*$', '', ai_response, flags=re.MULTILINE).strip()
+                        if not cleaned_response:
+                             cleaned_response = ai_response
+                        reply(cleaned_response, visibility)
 
             await asyncio.sleep(30)
             
